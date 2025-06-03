@@ -16,6 +16,7 @@ namespace Unity.CV.SyntheticHumans.Randomizers
     {
         public IntegerParameter activeHumansInEachIteration = new IntegerParameter {value = new UniformSampler(0, 10)};
         public int humanPoolSize = 50;
+        public int clothesPerPerson = 5;
         public int poolRefreshIntervalIterations = 50;
         public HumanGenerationConfigParameter humanGenerationConfigs = new HumanGenerationConfigParameter();
 
@@ -89,7 +90,7 @@ namespace Unity.CV.SyntheticHumans.Randomizers
             DestroyUnusedHumans();
 
             var tryCount = 0;
-            while(m_HumansInPool.Count < humanPoolSize && tryCount < 500)
+            while (m_HumansInPool.Count < humanPoolSize && tryCount < 500)
             {
                 tryCount++;
                 var configToUse = humanGenerationConfigs.Sample();
@@ -102,6 +103,19 @@ namespace Unity.CV.SyntheticHumans.Randomizers
                 human.transform.SetParent(m_PoolParent.transform);
 
                 human.SetActive(false);
+
+                // Generate additional people with same clothes
+                for (int i = 2; i <= clothesPerPerson; i++)
+                {
+                    var aug_human = HumanGenerator.GenerateHuman2(configToUse, human);
+                    if (!aug_human)
+                        continue;
+                    aug_human.name = $"GeneratedHuman_{m_HumansInPool.Count} - based on {configToUse.name}";
+                    m_HumansInPool.Add(aug_human);
+                    aug_human.transform.SetParent(m_PoolParent.transform);
+
+                    aug_human.SetActive(false);
+                }
             }
         }
 

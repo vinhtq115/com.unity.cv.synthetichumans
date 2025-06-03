@@ -343,6 +343,7 @@ namespace Unity.CV.SyntheticHumans.Randomizers
         public UnityEngine.Perception.Randomization.Parameters.IntegerParameter activeHumansInEachIteration;
         public HumanGenerationConfigParameter humanGenerationConfigs;
         public int humanPoolSize = 50;
+        public int clothesPerPerson = 5;
         public int poolRefreshIntervalIterations = 50;
         public HumanGenerationRandomizer() {}
         protected override void OnIterationEnd();

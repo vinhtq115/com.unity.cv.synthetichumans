@@ -101,7 +101,117 @@ namespace Unity.CV.SyntheticHumans.Generators
             return human;
         }
 
+        public static GameObject GenerateHuman2(HumanGenerationConfig generationConfig, GameObject og_human, bool discardPartialGenerations = true)
+        {
+            s_RandomGenerator.state = SamplerState.NextRandomState();
 
+            var human = generationConfig.basePrefab ? Object.Instantiate(generationConfig.basePrefab) : new GameObject();
+
+            var assetRefsForGeneration = human.AddComponent<SingleHumanGenerationAssetRefs>();
+
+            // Get the original human's specs and asset refs
+            var og_humanSpecs = og_human.GetComponent<SingleHumanSpecification>();
+            var og_assetRefs = og_human.GetComponent<SingleHumanGenerationAssetRefs>();
+
+            if (!og_humanSpecs || !og_assetRefs)
+            {
+                Debug.LogError("Original human does not have required components (SingleHumanSpecification or SingleHumanGenerationAssetRefs)");
+                if (discardPartialGenerations)
+                {
+                    Object.DestroyImmediate(human);
+                    return null;
+                }
+                return human;
+            }
+
+            // Copy the original human's specs
+            var humanSpecs = human.AddComponent<SingleHumanSpecification>();
+            humanSpecs.age = og_humanSpecs.age;
+            humanSpecs.gender = og_humanSpecs.gender;
+            humanSpecs.ethnicity = og_humanSpecs.ethnicity;
+            humanSpecs.heightWeightSolver = og_humanSpecs.heightWeightSolver;
+            humanSpecs.normalizedHeight = og_humanSpecs.normalizedHeight;
+            humanSpecs.heightRange = og_humanSpecs.heightRange;
+            humanSpecs.normalizedWeight = og_humanSpecs.normalizedWeight;
+            humanSpecs.weightRange = og_humanSpecs.weightRange;
+            humanSpecs.requiredClothing = og_humanSpecs.requiredClothing;
+
+            // Copy non-clothing related assets from original human
+            assetRefsForGeneration.bodyMeshTag = og_assetRefs.bodyMeshTag;
+            assetRefsForGeneration.faceVATTag = og_assetRefs.faceVATTag;
+            assetRefsForGeneration.faceMatTag = og_assetRefs.faceMatTag;
+            assetRefsForGeneration.bodyMatTag = og_assetRefs.bodyMatTag;
+            assetRefsForGeneration.eyeMatTag = og_assetRefs.eyeMatTag;
+            assetRefsForGeneration.hairMeshTag = og_assetRefs.hairMeshTag;
+            assetRefsForGeneration.primaryBlendVATTag = og_assetRefs.primaryBlendVATTag;
+            assetRefsForGeneration.secondaryBlendVATTag = og_assetRefs.secondaryBlendVATTag;
+            assetRefsForGeneration.hairMatTag = og_assetRefs.hairMatTag;
+
+            var assetTagPool = generationConfig.assetTagPool;
+            if (!assetTagPool)
+            {
+                Debug.LogError($"The provided {nameof(HumanGenerationConfig)} asset named {generationConfig.name} does not have a {nameof(SyntheticHumanAssetPool)} assigned. Will not generate a human with this config");
+                if (discardPartialGenerations)
+                {
+                    Object.DestroyImmediate(human);
+                    return null;
+                }
+                else
+                    return human;
+            }
+
+            // Find new clothing for the human
+            ReviewAndAssignClothingTags(humanSpecs, assetRefsForGeneration, assetTagPool);
+            FindAndAssignCompatibleClothingVatTags(assetTagPool, assetRefsForGeneration, humanSpecs);
+            // Possible missing FindAndAssignCompatibleClothingVatTags
+
+            if (!LoadAndAssignFinalAssets(assetRefsForGeneration))
+            {
+                Debug.LogError($"Unable to load and assign final assets from selected tags");
+                if (discardPartialGenerations)
+                {
+                    Object.DestroyImmediate(human);
+                    return null;
+                }
+                else
+                    return human;
+            }
+
+            ApplyMeshBase(assetRefsForGeneration.bodyMesh, human);
+
+            ApplyBodyVats(assetRefsForGeneration, humanSpecs);
+
+            //Rig application
+            var newHumanRenderer = human.GetComponent<SkinnedMeshRenderer>();
+            var skeletonInfo = generationConfig.CreateSkeleton(newHumanRenderer);
+
+            BindSkinnedRendererToSkeleton(newHumanRenderer, skeletonInfo, assetRefsForGeneration.bodyMeshTag, assetRefsForGeneration.primaryBlendVATTag);
+
+            GenerateClothes(assetRefsForGeneration, skeletonInfo);
+            ApplyClothingVats(assetRefsForGeneration, humanSpecs);
+            BindClothesToSkeleton(assetRefsForGeneration, skeletonInfo);
+
+            AssignFaceBodyEyeMaterials(newHumanRenderer, assetRefsForGeneration, humanSpecs);
+
+            GenerateHair(assetRefsForGeneration, skeletonInfo, newHumanRenderer);
+
+            // Add Mesh Collider to the body
+            var colliderManager = human.AddComponent<HumanColliderManager>();
+            colliderManager.SkeletonOrderedBones = skeletonInfo.OrderedBones;
+            if (generationConfig.enableColliderGeneration)
+            {
+                colliderManager.Initialize();
+            }
+
+            // Let any user-added Lifecycle Subscribers know that human generation is complete
+            var lifecycleSubscribers = human.GetComponents<HumanGenerationLifecycleSubscriber>();
+            foreach (var subscriber in lifecycleSubscribers)
+            {
+                subscriber.OnGenerationComplete();
+            }
+
+            return human;
+        }
 
         /// <summary>
         /// Randomly generates a single set of final properties for a single human to be generated based on the provided <see cref="generationConfig"/>, and stores them in <see cref="humanSpecs"/>
